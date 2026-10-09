@@ -5,56 +5,70 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Game of Cece</title>
   <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
+    html, body { margin: 0; min-height: 100%; }
     body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #ffb3d9, #b3c6ff);
+      background-attachment: fixed;
+      color: #2b1a4a;
+      padding: 1rem;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    h1 { margin: 0.5rem 0; font-size: clamp(2rem, 9vw, 3.5rem); }
+    .coins {
+      display: inline-block;
+      background: #fff8;
+      border-radius: 999px;
+      padding: 0.4rem 1rem;
+      font-size: 1.3rem;
+      font-weight: bold;
+      margin-bottom: 1.5rem;
+    }
+    .tiles {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.8rem;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    .tile {
+      aspect-ratio: 1;
+      border-radius: 1rem;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 1.5rem;
-      padding: 1rem;
-      box-sizing: border-box;
-      text-align: center;
-      background: linear-gradient(160deg, #ffb3d9, #b3c6ff);
+      gap: 0.3rem;
+      font-size: 0.95rem;
+      font-weight: bold;
+      text-decoration: none;
       color: #2b1a4a;
+      background: #fff;
+      box-shadow: 0 4px 0 #0002;
     }
-    h1 {
-      margin: 0;
-      font-size: clamp(2.5rem, 12vw, 5rem);
-    }
-    p {
-      margin: 0;
-      font-size: 1.2rem;
-    }
-    button {
-      font-size: 1.3rem;
-      padding: 0.8rem 1.6rem;
-      border: none;
-      border-radius: 999px;
-      background: #7b3fe4;
-      color: #fff;
-      cursor: pointer;
-    }
-    button:active { transform: scale(0.95); }
-    #count { font-size: 1.5rem; font-weight: bold; }
+    .tile .icon { font-size: 2.2rem; }
+    .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 #0002; }
+    .tile.locked { background: #fff6; color: #2b1a4a99; box-shadow: none; }
   </style>
 </head>
 <body>
-  <h1>Hello Cece! 👋</h1>
-  <p>Hier entsteht dein eigenes Spiel.</p>
-  <button id="btn">Tipp mich!</button>
-  <div id="count">0</div>
+  <h1>Game of Cece</h1>
+  <div class="coins">🪙 <span id="coins">0</span></div>
+
+  <div class="tiles">
+    <a class="tile" href="blocks.html"><span class="icon">🧱</span>Blöcke</a>
+    <div class="tile locked"><span class="icon">❓</span>Bald da</div>
+    <div class="tile locked"><span class="icon">❓</span>Bald da</div>
+    <div class="tile locked"><span class="icon">❓</span>Bald da</div>
+    <div class="tile locked"><span class="icon">❓</span>Bald da</div>
+    <div class="tile locked"><span class="icon">❓</span>Bald da</div>
+  </div>
+
   <script>
-    let n = 0;
-    const count = document.getElementById("count");
-    document.getElementById("btn").addEventListener("click", () => {
-      n++;
-      count.textContent = n;
-    });
+    let coins = 0;
+    try { coins = Number(localStorage.getItem("cece-coins")) || 0; } catch (e) {}
+    document.getElementById("coins").textContent = coins;
   </script>
 </body>
 </html>

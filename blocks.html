@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Blöcke – Game of Cece</title>
+  <style>
+    html, body { margin: 0; height: 100%; overscroll-behavior: none; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #ffb3d9, #b3c6ff);
+      color: #2b1a4a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.8rem;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    .top {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.8rem;
+    }
+    .top a, .coins {
+      background: #fff8;
+      border-radius: 999px;
+      padding: 0.4rem 1rem;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: inherit;
+      text-decoration: none;
+    }
+    #board {
+      width: min(92vw, 420px);
+      aspect-ratio: 1;
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 3px;
+      padding: 6px;
+      box-sizing: border-box;
+      background: #2b1a4a;
+      border-radius: 12px;
+    }
+    .cell { background: #3d2a63; border-radius: 4px; }
+    .cell.preview { background: #ffffff66; }
+    .cell.clearing { animation: pop 0.3s forwards; }
+    @keyframes pop { to { transform: scale(0.2); opacity: 0; } }
+    #tray {
+      width: min(92vw, 420px);
+      height: 140px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin-top: 1rem;
+    }
+    .slot { width: 30%; height: 100%; display: flex; justify-content: center; align-items: center; }
+    .piece { display: grid; gap: 2px; cursor: grab; }
+    .piece.dragging { position: fixed; z-index: 10; pointer-events: none; gap: 3px; }
+    .block { border-radius: 4px; box-shadow: inset 0 -3px 0 #0003; }
+    .empty-block { visibility: hidden; }
+    .float {
+      position: fixed;
+      font-size: 2rem;
+      font-weight: bold;
+      pointer-events: none;
+      animation: up 1.2s forwards;
+      text-shadow: 0 2px 0 #fff;
+    }
+    @keyframes up { to { transform: translateY(-80px); opacity: 0; } }
+    #over {
+      position: fixed; inset: 0;
+      background: #0008;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #over .box {
+      background: #fff;
+      border-radius: 1rem;
+      padding: 1.5rem 2rem;
+      text-align: center;
+    }
+    #over button {
+      font-size: 1.2rem;
+      padding: 0.7rem 1.4rem;
+      border: none;
+      border-radius: 999px;
+      background: #7b3fe4;
+      color: #fff;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <a href="index.html">⬅︎</a>
+    <div class="coins">🪙 <span id="coins">0</span></div>
+  </div>
+
+  <div id="board"></div>
+  <div id="tray"><div class="slot"></div><div class="slot"></div><div class="slot"></div></div>
+
+  <div id="over">
+    <div class="box">
+      <h2>Kein Platz mehr!</h2>
+      <div>In dieser Runde: 🪙 <span id="round">0</span></div>
+      <button id="again">Nochmal</button>
+    </div>
+  </div>
+
+  <script>
+    const SIZE = 8;
+    const COLORS = ["#ff5c8a", "#ffb02e", "#4cd964", "#3ec6ff", "#a970ff", "#ff7a45"];
+    const SHAPES = [
+      [[1]],
+      [[1, 1]], [[1], [1]],
+      [[1, 1, 1]], [[1], [1], [1]],
+      [[1, 1, 1, 1]], [[1], [1], [1], [1]],
+      [[1, 1, 1, 1, 1]], [[1], [1], [1], [1], [1]],
+      [[1, 1], [1, 1]],
+      [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+      [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[1, 1], [1, 0]], [[1, 1], [0, 1]],
+      [[1, 0], [1, 0], [1, 1]], [[0, 1], [0, 1], [1, 1]], [[1, 1, 1], [1, 0, 0]], [[1, 1, 1], [0, 0, 1]],
+      [[1, 1, 1], [0, 1, 0]], [[0, 1, 0], [1, 1, 1]],
+    ];
+
+    const boardEl = document.getElementById("board");
+    const slots = document.querySelectorAll(".slot");
+    const coinsEl = document.getElementById("coins");
+
+    let grid = [];      // grid[r][c] = color or null
+    let cells = [];     // DOM cells
+    let pieces = [];    // pieces in the tray (null = already used)
+    let coins = 0;
+    let roundCoins = 0;
+    try { coins = Number(localStorage.getItem("cece-coins")) || 0; } catch (e) {}
+    coinsEl.textContent = coins;
+
+    function saveCoins() {
+      coinsEl.textContent = coins;
+      try { localStorage.setItem("cece-coins", coins); } catch (e) {}
+    }
+
+    // 1 Reihe = 1 Münze, mehrere auf einmal = 5 bis 10 Münzen
+    function coinsFor(lines) {
+      if (lines === 1) return 1;
+      return Math.min(10, 5 + (lines - 2) * 2);
+    }
+
+    function buildBoard() {
+      boardEl.innerHTML = "";
+      grid = [];
+      cells = [];
+      for (let r = 0; r < SIZE; r++) {
+        grid.push(new Array(SIZE).fill(null));
+        const row = [];
+        for (let c = 0; c < SIZE; c++) {
+          const d = document.createElement("div");
+          d.className = "cell";
+          boardEl.appendChild(d);
+          row.push(d);
+        }
+        cells.push(row);
+      }
+    }
+
+    function drawBoard() {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const d = cells[r][c];
+          d.className = "cell";
+          d.style.background = grid[r][c] || "";
+          d.style.boxShadow = grid[r][c] ? "inset 0 -3px 0 #0003" : "";
+        }
+      }
+    }
+
+    function cellSize() {
+      return cells[0][1].getBoundingClientRect().left - cells[0][0].getBoundingClientRect().left;
+    }
+
+    function makePieceEl(piece, blockPx) {
+      const el = document.createElement("div");
+      el.className = "piece";
+      el.style.gridTemplateColumns = `repeat(${piece.shape[0].length}, ${blockPx}px)`;
+      for (const row of piece.shape) {
+        for (const v of row) {
+          const b = document.createElement("div");
+          b.className = v ? "block" : "block empty-block";
+          b.style.width = b.style.height = blockPx + "px";
+          b.style.background = piece.color;
+          el.appendChild(b);
+        }
+      }
+      return el;
+    }
+
+    function newPieces() {
+      pieces = [0, 1, 2].map(() => ({
+        shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      }));
+      drawTray();
+    }
+
+    function drawTray() {
+      pieces.forEach((p, i) => {
+        slots[i].innerHTML = "";
+        if (!p) return;
+        const el = makePieceEl(p, 22);
+        el.addEventListener("pointerdown", (e) => startDrag(e, i));
+        slots[i].appendChild(el);
+      });
+    }
+
+    function fits(shape, r0, c0) {
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[0].length; c++) {
+          if (!shape[r][c]) continue;
+          const rr = r0 + r, cc = c0 + c;
+          if (rr < 0 || cc < 0 || rr >= SIZE || cc >= SIZE || grid[rr][cc]) return false;
+        }
+      }
+      return true;
+    }
+
+    function canPlaceAnywhere(shape) {
+      for (let r = 0; r < SIZE; r++)
+        for (let c = 0; c < SIZE; c++)
+          if (fits(shape, r, c)) return true;
+      return false;
+    }
+
+    // --- Ziehen mit Finger oder Maus ---
+    let drag = null;
+
+    function startDrag(e, i) {
+      e.preventDefault();
+      const piece = pieces[i];
+      const size = cellSize();
+      const el = makePieceEl(piece, size - 3);
+      el.classList.add("dragging");
+      document.body.appendChild(el);
+      slots[i].firstChild.style.opacity = "0.2";
+      // Bei Touch den Block etwas über den Finger heben, damit man ihn sieht
+      const lift = e.pointerType === "touch" ? 80 : 0;
+      drag = { i, piece, el, size, lift, target: null };
+      moveDrag(e);
+      window.addEventListener("pointermove", moveDrag);
+      window.addEventListener("pointerup", endDrag);
+      window.addEventListener("pointercancel", endDrag);
+    }
+
+    function moveDrag(e) {
+      if (!drag) return;
+      const w = drag.piece.shape[0].length * drag.size;
+      const h = drag.piece.shape.length * drag.size;
+      const x = e.clientX - w / 2;
+      const y = e.clientY - h / 2 - drag.lift;
+      drag.el.style.left = x + "px";
+      drag.el.style.top = y + "px";
+
+      const first = cells[0][0].getBoundingClientRect();
+      const c0 = Math.round((x - first.left) / drag.size);
+      const r0 = Math.round((y - first.top) / drag.size);
+      drag.target = fits(drag.piece.shape, r0, c0) ? [r0, c0] : null;
+      drawBoard();
+      if (drag.target) {
+        eachBlock(drag.piece.shape, r0, c0, (r, c) => cells[r][c].classList.add("preview"));
+      }
+    }
+
+    function endDrag() {
+      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+      const d = drag;
+      drag = null;
+      d.el.remove();
+      if (d.target) {
+        place(d.i, d.target[0], d.target[1]);
+      } else {
+        drawBoard();
+        drawTray();
+      }
+    }
+
+    function eachBlock(shape, r0, c0, fn) {
+      for (let r = 0; r < shape.length; r++)
+        for (let c = 0; c < shape[0].length; c++)
+          if (shape[r][c]) fn(r0 + r, c0 + c);
+    }
+
+    function place(i, r0, c0) {
+      const p = pieces[i];
+      eachBlock(p.shape, r0, c0, (r, c) => { grid[r][c] = p.color; });
+      pieces[i] = null;
+      drawBoard();
+
+      // Volle Reihen und Spalten finden
+      const fullRows = [], fullCols = [];
+      for (let r = 0; r < SIZE; r++) if (grid[r].every(Boolean)) fullRows.push(r);
+      for (let c = 0; c < SIZE; c++) if (grid.every(row => row[c])) fullCols.push(c);
+      const lines = fullRows.length + fullCols.length;
+
+      if (lines > 0) {
+        const toClear = new Set();
+        fullRows.forEach(r => { for (let c = 0; c < SIZE; c++) toClear.add(r * SIZE + c); });
+        fullCols.forEach(c => { for (let r = 0; r < SIZE; r++) toClear.add(r * SIZE + c); });
+        toClear.forEach(k => cells[Math.floor(k / SIZE)][k % SIZE].classList.add("clearing"));
+        toClear.forEach(k => { grid[Math.floor(k / SIZE)][k % SIZE] = null; });
+
+        const won = coinsFor(lines);
+        coins += won;
+        roundCoins += won;
+        saveCoins();
+        showFloat("+" + won + " 🪙", cells[r0][c0]);
+        setTimeout(afterPlace, 300);
+      } else {
+        afterPlace();
+      }
+    }
+
+    function afterPlace() {
+      drawBoard();
+      if (pieces.every(p => !p)) newPieces(); else drawTray();
+      const left = pieces.filter(Boolean);
+      if (!left.some(p => canPlaceAnywhere(p.shape))) {
+        document.getElementById("round").textContent = roundCoins;
+        document.getElementById("over").style.display = "flex";
+      }
+    }
+
+    function showFloat(text, nearEl) {
+      const rect = nearEl.getBoundingClientRect();
+      const f = document.createElement("div");
+      f.className = "float";
+      f.textContent = text;
+      f.style.left = Math.min(rect.left, window.innerWidth - 120) + "px";
+      f.style.top = rect.top + "px";
+      document.body.appendChild(f);
+      setTimeout(() => f.remove(), 1200);
+    }
+
+    function start() {
+      roundCoins = 0;
+      document.getElementById("over").style.display = "none";
+      buildBoard();
+      drawBoard();
+      newPieces();
+    }
+
+    document.getElementById("again").addEventListener("click", start);
+    start();
+  </script>
+</body>
+</html>
